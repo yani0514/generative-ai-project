@@ -75,6 +75,33 @@ def main() -> int:
     #   models. What does this measurement tell you about switching between
     #   them inside one request, and what would you do instead?
 
+    subprocess.run(["ollama", "stop", SMALL.name])
+
+    cold_reply, cold_secs = timed(client, SHORT, SMALL.name)
+    warm_reply, warm_secs = timed(client, SHORT, SMALL.name)
+
+    cold_warm_ratio = cold_secs / max(warm_secs, 1e-9)
+
+    print(f"Cold call: {cold_secs:.2f}s")
+    print(f"Warm call: {warm_secs:.2f}s")
+    print(f"Cold/warm ratio: {cold_warm_ratio:.2f}x")
+
+    rows.append({
+        "case":"cold start",
+        "model": SMALL.name,
+        "seconds": round(cold_secs, 3),
+        "prompt_tokens": cold_reply.usage.prompt_tokens,
+        "completion_tokens": cold_reply.usage.completion_tokens,
+    })
+
+    rows.append({
+        "case": "warm_start",
+        "model": SMALL.name,
+        "seconds": round(warm_secs, 3),
+        "prompt_tokens": warm_reply.usage.prompt_tokens,
+        "completion_tokens": warm_reply.usage.completion_tokens,
+    })
+
     # TODO 8. Estimate what a real evaluation run would cost hosted.
     #
     #   In week 10 you build a golden set and run it. Assume 200 cases, each
@@ -90,6 +117,38 @@ def main() -> int:
     #
     #   Label them as estimates. They are not measurements and the price
     #   list is dated {PRICE_DATE}.
+
+    long_input_tokens = rows[1]["prompt_tokens"]
+    long_output_tokens = rows[1]["completion_tokens"]
+
+    small_estimate = estimate(
+        long_input_tokens,
+        long_output_tokens,
+        tier="small",
+    )
+
+    large_estimate = estimate(
+        long_input_tokens,
+        long_output_tokens,
+        tier="large"
+    )
+
+    cases_per_run = 200
+    nights = 14 * 7
+
+    small_one_run = small_estimate.total * cases_per_run
+    large_one_run = large_estimate.total * cases_per_run
+
+    small_semester = small_one_run * nights
+    large_semester = large_one_run * nights
+
+    print("Estimated hosted evaluation cost:")
+    print(f"Small tier, one 200-case run: {small_one_run:.4f} EUR")
+    print(f"Small tier, nightly for 14 weeks: {small_semester:.2f} EUR")
+    print(f"Large tier, one 200-case run: {large_one_run:.4f} EUR")
+    print(f"Large tier, nightly for 14 weeks: {large_semester:.2f} EUR")
+    print(f"Price list date: {PRICE_DATE}")
+    print("Estimate, not a measurement.")
 
     write_json("artifacts/week01_cost.json",
                {"rows": rows, "price_list_date": PRICE_DATE})
